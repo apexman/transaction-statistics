@@ -20,36 +20,36 @@ public class StatisticsService {
     private final ReentrantLock lock = new ReentrantLock();
     private Queue<Transaction> transactionQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(Transaction::getTimestamp));
     private volatile Statistics currentStatistics = new Statistics();
-    private boolean keepWatcherRunning = true;
+//    private boolean keepWatcherRunning = true;
     private long MINUTE_IN_MILLISECS = 60 * 1000;
 
     public StatisticsService() {
-        initStatisticsWatcher();
+//        initStatisticsWatcher();
     }
 
-    private void initStatisticsWatcher() {
-        Runnable runnable = () -> {
-            try {
-                while (keepWatcherRunning) {
-                    Thread.sleep(1000);
-                    Transaction oldestTransaction = transactionQueue.peek();
-                    BigDecimal timestamp = null;
-
-                    if (oldestTransaction != null) {
-                        timestamp = oldestTransaction.getTimestamp();
-
-                        if (timestamp.compareTo(BigDecimal.valueOf(System.currentTimeMillis() - MINUTE_IN_MILLISECS)) < 0) {
-                            changeTransactionList(MethodName.SUBTRACTION, null);
-                        }
-                    }
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        };
-        Thread t = new Thread(runnable);
-        t.start();
-    }
+//    private void initStatisticsWatcher() {
+//        Runnable runnable = () -> {
+//            try {
+//                while (keepWatcherRunning) {
+//                    Thread.sleep(1000);
+//                    Transaction oldestTransaction = transactionQueue.peek();
+//                    BigDecimal timestamp = null;
+//
+//                    if (oldestTransaction != null) {
+//                        timestamp = oldestTransaction.getTimestamp();
+//
+//                        if (timestamp.compareTo(BigDecimal.valueOf(System.currentTimeMillis() - MINUTE_IN_MILLISECS)) < 0) {
+//                            changeTransactionList(MethodName.SUBTRACTION, null);
+//                        }
+//                    }
+//                }
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        };
+//        Thread t = new Thread(runnable);
+//        t.start();
+//    }
 
 //    public void turnOffStatisticsWatcher(){
 //        keepWatcherRunning = false;
