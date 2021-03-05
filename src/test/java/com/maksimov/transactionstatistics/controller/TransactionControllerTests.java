@@ -1,96 +1,98 @@
 package com.maksimov.transactionstatistics.controller;
 
-import com.maksimov.transactionstatistics.model.Statistics;
-import io.restassured.http.ContentType;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.maksimov.transactionstatistics.dto.StatisticsDTO;
+import com.maksimov.transactionstatistics.dto.TransactionDTO;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
-import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
-import static java.net.HttpURLConnection.HTTP_CREATED;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
+@SpringBootTest
+@AutoConfigureMockMvc(print = MockMvcPrint.LOG_DEBUG)
+@Slf4j
 public class TransactionControllerTests {
-    private long LESS_MINUTE = 55 * 1000;
-
     @Autowired
     private MockMvc mockMvc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
-    public void sendPastStatistics() {
+    public void sendPastStatistics() throws Exception {
+        StatisticsDTO prevStatistics = getServerStatistics();
+        long secondAgo = Instant.now().minusSeconds(60).toEpochMilli();
+        double amount = 10;
+        sendTransaction(amount, secondAgo)
+                .andExpect(status().isNoContent());
+        StatisticsDTO statistics = getServerStatistics();
+        assertEquals(prevStatistics.toString(), statistics.toString());
     }
 
     @Test
-    public void sendPresentStatistics() {
-        long start = System.currentTimeMillis();
-        long current = System.currentTimeMillis();
+    public void sendPresentStatistics() throws Exception {
+        double[] amounts = new double[]{1, 0, 3, 4};
+        List<StatisticsDTO> expectedStatistics = new ArrayList<>();
+        expectedStatistics.add(0, new StatisticsDTO(1, 1, 1, 1, 1));
+        expectedStatistics.add(1, new StatisticsDTO(1, 0.5, 1, 0, 2));
+        expectedStatistics.add(2, new StatisticsDTO(4, 1.3333333333333333, 3, 0, 3));
+        expectedStatistics.add(3, new StatisticsDTO(8, 2, 4, 0, 4));
 
-        double amount = 0;
-
-        BigDecimal sum = BigDecimal.valueOf(0);
-        BigDecimal min = BigDecimal.valueOf(1000);
-        BigDecimal max = BigDecimal.valueOf(-1);
-        BigDecimal count = BigDecimal.valueOf(0);
-        BigDecimal avg = BigDecimal.valueOf(0);
-
-        while (current < start + LESS_MINUTE) {
-            amount = Math.floor(Math.random() * 10 + 1);
-
-            sendTransaction(amount, current);
-
-            BigDecimal amountBigDecimal = BigDecimal.valueOf(amount);
-            sum = sum.add(amountBigDecimal);
-            min = min.min(amountBigDecimal);
-            max = max.max(amountBigDecimal);
-            count = count.add(BigDecimal.ONE);
-            avg = sum.divide(count, 2, RoundingMode.HALF_UP);
-
-            Statistics statistics2 = given()
-                    .mockMvc(mockMvc)
-                    .contentType(ContentType.JSON)
-                    .get("/api/statistics")
-                    .then()
-                    .extract().as(Statistics.class);
-
-            assertEquals(statistics2.getSum(), sum);
-            assertEquals(statistics2.getCount(), count);
-            assertEquals(statistics2.getMin(), min);
-            assertEquals(statistics2.getMax(), max);
-            assertEquals(statistics2.getAvg(), avg);
-
-            current = System.currentTimeMillis();
+        for (int i = 0; i < amounts.length; i++) {
+            log.info(String.format("Iteration number %d", i));
+            double amount = amounts[i];
+            StatisticsDTO expected = expectedStatistics.get(i);
+            sendTransaction(amount, Instant.now().toEpochMilli())
+                    .andExpect(status().isCreated());
+            StatisticsDTO statisticsDTO = getServerStatistics();
+            assertEquals(expected.toString(), statisticsDTO.toString(), String.format("Iteration %d, were sent %s", i, Arrays.spliterator(amounts, 0, i + 1)));
         }
     }
 
     @Test
-    public void sendFutureStatistics() {
+    public void sendFutureStatistics() throws Exception {
+        StatisticsDTO prevStatistics = getServerStatistics();
+        long secondAgo = Instant.now().plusSeconds(1).toEpochMilli();
+        double amount = 10;
+        sendTransaction(amount, secondAgo)
+                .andExpect(status().isNoContent());
+        StatisticsDTO statistics = getServerStatistics();
+        assertEquals(prevStatistics.toString(), statistics.toString());
     }
 
-    @Test
-    public void sendRandomStatistics() {
+    private ResultActions sendTransaction(double amount, long timestamp) throws Exception {
+        TransactionDTO transaction = new TransactionDTO(amount, timestamp);
+        String value = mapper.writeValueAsString(transaction);
+        return mockMvc.perform(post("/api/transactions").contentType(MediaType.APPLICATION_JSON_VALUE).content(value))
+                .andDo(print());
     }
 
+    private StatisticsDTO getServerStatistics() throws Exception {
+        MockHttpServletResponse response = mockMvc.perform(get("/api/statistics"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andReturn()
+                .getResponse();
 
-    private void sendTransaction(double amount, long timestamp) {
-        given()
-                .mockMvc(mockMvc)
-                .contentType(ContentType.JSON)
-                .param("amount", amount)
-                .param("timestamp", timestamp)
-                .when()
-                .post("/api/transactions")
-                .then()
-                .statusCode(HTTP_CREATED);
+        return mapper.readValue(response.getContentAsString(), StatisticsDTO.class);
     }
 }
 
